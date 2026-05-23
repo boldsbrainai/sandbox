@@ -21,6 +21,14 @@ from mcp import ClientSession
 from openai import AzureOpenAI, OpenAI
 
 
+def _find_missing_tags(text: str, require_all_tags: bool) -> List[str]:
+    """Return the response tags still required for the current evaluation mode."""
+    required_tags = ["response"]
+    if require_all_tags:
+        required_tags.extend(["summary", "feedback"])
+    return [f"<{tag}>" for tag in required_tags if f"<{tag}>" not in text]
+
+
 # ============================================================================
 # Default System Prompt
 # ============================================================================
@@ -129,6 +137,7 @@ class AzureOpenAIAgentLoop(BaseAgentLoop):
         azure_deployment: str = None,
         azure_api_version: str = None,
         max_iterations: int = 50,
+        require_all_tags: bool = True,
     ):
         """
         Initialize Azure OpenAI agent loop.
@@ -141,6 +150,8 @@ class AzureOpenAIAgentLoop(BaseAgentLoop):
             azure_deployment: Azure OpenAI deployment name (default: from env)
             azure_api_version: Azure OpenAI API version (default: from env)
             max_iterations: Maximum number of reasoning iterations
+            require_all_tags: Whether summary/feedback tags are required in
+                addition to the final response tag.
         """
         super().__init__(mcp_session, system_prompt)
 
@@ -157,6 +168,7 @@ class AzureOpenAIAgentLoop(BaseAgentLoop):
             "AZURE_OPENAI_API_VERSION", "2024-02-15-preview"
         )
         self.max_iterations = max_iterations
+        self.require_all_tags = require_all_tags
 
         self.client = AzureOpenAI(
             azure_endpoint=self.azure_endpoint,
@@ -227,13 +239,7 @@ class AzureOpenAIAgentLoop(BaseAgentLoop):
                 print()
 
                 # Verify response contains required tags - force retry if missing
-                missing_tags = []
-                if "<response>" not in final_content:
-                    missing_tags.append("<response>")
-                if "<summary>" not in final_content:
-                    missing_tags.append("<summary>")
-                if "<feedback>" not in final_content:
-                    missing_tags.append("<feedback>")
+                missing_tags = _find_missing_tags(final_content, self.require_all_tags)
 
                 if missing_tags:
                     print(
@@ -245,7 +251,7 @@ class AzureOpenAIAgentLoop(BaseAgentLoop):
                     messages.append(
                         {
                             "role": "user",
-                            "content": f"ERROR: Your response is missing required tags: {', '.join(missing_tags)}. You MUST provide ALL THREE tags: <summary>, <feedback>, and <response>. Please provide your complete response now with all three tags.",
+                            "content": f"ERROR: Your response is missing required tags: {', '.join(missing_tags)}. Please provide your complete response now with the required tags.",
                         }
                     )
                     continue  # Go back to the loop
@@ -350,6 +356,7 @@ class OpenAIAgentLoop(BaseAgentLoop):
         model: str = None,
         max_iterations: int = 50,
         temperature: float = None,
+        require_all_tags: bool = True,
     ):
         """
         Initialize OpenAI-compatible agent loop.
@@ -365,6 +372,8 @@ class OpenAIAgentLoop(BaseAgentLoop):
             max_iterations: Maximum number of reasoning iterations
             temperature: Sampling temperature. Auto-clamped for providers
                 that require ``temperature > 0`` (e.g. MiniMax).
+            require_all_tags: Whether summary/feedback tags are required in
+                addition to the final response tag.
         """
         super().__init__(mcp_session, system_prompt)
 
@@ -373,6 +382,7 @@ class OpenAIAgentLoop(BaseAgentLoop):
         self.model = model or os.getenv("OPENAI_MODEL", "gpt-4")
         self.max_iterations = max_iterations
         self.temperature = temperature
+        self.require_all_tags = require_all_tags
 
         client_kwargs: Dict[str, Any] = {}
         if self.api_key:
@@ -470,13 +480,7 @@ class OpenAIAgentLoop(BaseAgentLoop):
                     )
                 print()
 
-                missing_tags = []
-                if "<response>" not in final_content:
-                    missing_tags.append("<response>")
-                if "<summary>" not in final_content:
-                    missing_tags.append("<summary>")
-                if "<feedback>" not in final_content:
-                    missing_tags.append("<feedback>")
+                missing_tags = _find_missing_tags(final_content, self.require_all_tags)
 
                 if missing_tags:
                     print(
@@ -488,7 +492,7 @@ class OpenAIAgentLoop(BaseAgentLoop):
                     messages.append(
                         {
                             "role": "user",
-                            "content": f"ERROR: Your response is missing required tags: {', '.join(missing_tags)}. You MUST provide ALL THREE tags: <summary>, <feedback>, and <response>. Please provide your complete response now with all three tags.",
+                            "content": f"ERROR: Your response is missing required tags: {', '.join(missing_tags)}. Please provide your complete response now with the required tags.",
                         }
                     )
                     continue

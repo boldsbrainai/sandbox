@@ -478,6 +478,7 @@ async def run_evaluation(
     agent_type: str = "azure",
     openai_base_url: str = None,
     openai_model: str = None,
+    require_all_tags: bool = True,
 ) -> str:
     """
     Run evaluation with tools from MCP server.
@@ -488,6 +489,8 @@ async def run_evaluation(
         agent_type: Agent backend to use — ``"azure"`` (default) or ``"openai"``
         openai_base_url: Base URL override for OpenAI-compatible providers (e.g. MiniMax)
         openai_model: Model name override for OpenAI-compatible providers
+        require_all_tags: Whether summary/feedback tags are required in
+            addition to the final response tag.
 
     Returns:
         Markdown evaluation report
@@ -515,15 +518,25 @@ async def run_evaluation(
 
     # Initialize agent loop
     if agent_type == "openai":
-        agent_kwargs: Dict[str, Any] = {"mcp_session": _mcp_session}
+        agent_kwargs: Dict[str, Any] = {
+            "mcp_session": _mcp_session,
+            "require_all_tags": require_all_tags,
+        }
         if openai_base_url:
             agent_kwargs["base_url"] = openai_base_url
         if openai_model:
             agent_kwargs["model"] = openai_model
         agent = OpenAIAgentLoop(**agent_kwargs)
     else:
-        agent = AzureOpenAIAgentLoop(mcp_session=_mcp_session)
+        agent = AzureOpenAIAgentLoop(
+            mcp_session=_mcp_session,
+            require_all_tags=require_all_tags,
+        )
     print(f"🤖 Using agent: {agent.__class__.__name__}")
+    print(
+        "🧪 Response format validation: "
+        + ("strict" if require_all_tags else "relaxed")
+    )
 
     try:
         # Run all tasks serially
@@ -681,6 +694,11 @@ async def main():
         default=None,
         help="Model name for OpenAI-compatible API (e.g. MiniMax-M2.7). Only used with --agent openai.",
     )
+    parser.add_argument(
+        "--relaxed-response-format",
+        action="store_true",
+        help="Only require the final <response> tag from the model. Useful for separating tool-calling capability from summary/feedback formatting compliance.",
+    )
     args = parser.parse_args()
 
     # Determine which files to run
@@ -731,6 +749,7 @@ async def main():
                 agent_type=args.agent,
                 openai_base_url=args.openai_base_url,
                 openai_model=args.openai_model,
+                require_all_tags=not args.relaxed_response_format,
             )
 
             # Generate output filename (will overwrite if exists)

@@ -6,7 +6,7 @@
   <task category="environment" complexity="simple">
       <description>Test sandbox_get_context</description>
       <prompt>answer the aio system's version. like v1.0.0.1xx </prompt>
-      <response>v1.0.0.143</response>
+<response_pattern>v1\.0\.0\.152</response_pattern>
   </task>
 
 </evaluation>

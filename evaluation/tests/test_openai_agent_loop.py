@@ -280,6 +280,32 @@ class TestOpenAIAgentLoopRun(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock_client.chat.completions.create.call_count, 2)
 
     @patch("agent_loop.OpenAI")
+    async def test_relaxed_mode_accepts_response_only(self, mock_openai_cls):
+        """Relaxed mode should accept a response tag without summary/feedback."""
+        mock_client = MagicMock()
+        mock_openai_cls.return_value = mock_client
+
+        msg = MagicMock()
+        msg.content = "<response>v1.0.0.152</response>"
+        msg.tool_calls = None
+
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=msg)]
+        )
+
+        session = MagicMock()
+        loop = OpenAIAgentLoop(
+            mcp_session=session,
+            model="qwen3:latest",
+            api_key="test",
+            require_all_tags=False,
+        )
+
+        response_text, _ = await loop.run("report the sandbox version")
+        self.assertEqual(response_text, "<response>v1.0.0.152</response>")
+        self.assertEqual(mock_client.chat.completions.create.call_count, 1)
+
+    @patch("agent_loop.OpenAI")
     async def test_max_iterations_guard(self, mock_openai_cls):
         """Agent should stop after max_iterations even if LLM keeps calling tools."""
         mock_client = MagicMock()
