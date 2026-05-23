@@ -160,6 +160,7 @@ async def evaluate_single_task(
     agent: BaseAgentLoop,
     tools: List[Dict[str, Any]],
     task_index: int,
+    scoring_mode: str = "response",
 ) -> Dict[str, Any]:
     """Evaluate a single task with the given agent and tools."""
     start_time = time.time()
@@ -181,32 +182,38 @@ async def evaluate_single_task(
         actual_response = _extract_xml_content(response, "response")
         summary = _extract_xml_content(response, "summary")
         feedback = _extract_xml_content(response, "feedback")
+        num_tool_calls = sum(
+            len(metrics["durations"]) for metrics in tool_metrics.values()
+        )
 
         duration_seconds = time.time() - start_time
 
-        # Use regex matching for evaluation
-        # Ground truth is expected to be a regex pattern
-        score = 0
-        if actual_response:
-            try:
-                # Use search to check if pattern exists in response (partial match)
-                # This allows response_pattern to match substrings
-                if re.search(task["response"], actual_response, re.DOTALL):
-                    score = 1
-            except re.error:
-                # If pattern is invalid, fall back to exact string comparison
-                score = int(actual_response == task["response"])
+        if scoring_mode == "tool-calling":
+            score = int(num_tool_calls > 0)
+            expected = "At least one successful tool call"
+        else:
+            # Use regex matching for evaluation
+            # Ground truth is expected to be a regex pattern
+            score = 0
+            expected = task["response"]
+            if actual_response:
+                try:
+                    # Use search to check if pattern exists in response (partial match)
+                    # This allows response_pattern to match substrings
+                    if re.search(task["response"], actual_response, re.DOTALL):
+                        score = 1
+                except re.error:
+                    # If pattern is invalid, fall back to exact string comparison
+                    score = int(actual_response == task["response"])
 
         return {
             "prompt": task["prompt"],
-            "expected": task["response"],
+            "expected": expected,
             "actual": actual_response,
             "score": score,
             "total_duration": duration_seconds,
             "tool_calls": tool_metrics,
-            "num_tool_calls": sum(
-                len(metrics["durations"]) for metrics in tool_metrics.values()
-            ),
+            "num_tool_calls": num_tool_calls,
             "summary": summary,
             "feedback": feedback,
         }
@@ -216,13 +223,16 @@ async def evaluate_single_task(
         duration_seconds = time.time() - start_time
         error_type = type(e).__name__
         error_msg = str(e)
+        expected = task["response"]
+        if scoring_mode == "tool-calling":
+            expected = "At least one successful tool call"
 
         print(f"❌ Task {task_index + 1} failed completely: {error_type}: {error_msg}")
         traceback.print_exc()
 
         return {
             "prompt": task["prompt"],
-            "expected": task["response"],
+            "expected": expected,
             "actual": f"TASK_EXECUTION_ERROR: {error_type}: {error_msg}",
             "score": 0,
             "total_duration": duration_seconds,
@@ -242,6 +252,7 @@ REPORT_HEADER = """
 
 ## Summary
 
+- **Scoring Mode**: {scoring_mode}
 - **Accuracy**: {correct}/{total} ({accuracy:.1f}%)
 - **Average Task Duration**: {average_duration_s:.2f}s
 - **Average Tool Calls per Task**: {average_tool_calls:.2f}
@@ -254,7 +265,7 @@ TASK_TEMPLATE = """
 ### Task {task_number}
 
 - **Prompt**: {prompt}
-- **Ground Truth Response**: `{expected_response}`
+- **Success Criterion**: `{expected_response}`
 - **Actual Response**: `{actual_response}`
 - **Correct**: {correct_indicator}
 - **Duration**: {total_duration:.2f}s
@@ -479,6 +490,7 @@ async def run_evaluation(
     openai_base_url: str = None,
     openai_model: str = None,
     require_all_tags: bool = True,
+    scoring_mode: str = "response",
 ) -> str:
     """
     Run evaluation with tools from MCP server.
@@ -491,6 +503,8 @@ async def run_evaluation(
         openai_model: Model name override for OpenAI-compatible providers
         require_all_tags: Whether summary/feedback tags are required in
             addition to the final response tag.
+        scoring_mode: Whether to score by expected response matching or by
+            successful tool invocation.
 
     Returns:
         Markdown evaluation report
@@ -537,13 +551,20 @@ async def run_evaluation(
         "🧪 Response format validation: "
         + ("strict" if require_all_tags else "relaxed")
     )
+    print(f"📏 Scoring mode: {scoring_mode}")
 
     try:
         # Run all tasks serially
         results = []
         for i, task in enumerate(tasks):
             print(f"Processing task {i + 1}/{len(tasks)}")
-            result = await evaluate_single_task(task, agent, tools, i)
+            result = await evaluate_single_task(
+                task,
+                agent,
+                tools,
+                i,
+                scoring_mode=scoring_mode,
+            )
             results.append(result)
 
         # Calculate summary statistics
@@ -558,6 +579,7 @@ async def run_evaluation(
         total_tool_calls = sum(r["num_tool_calls"] for r in results)
 
         report = REPORT_HEADER.format(
+            scoring_mode=scoring_mode,
             correct=correct,
             total=len(results),
             accuracy=accuracy,
@@ -699,6 +721,12 @@ async def main():
         action="store_true",
         help="Only require the final <response> tag from the model. Useful for separating tool-calling capability from summary/feedback formatting compliance.",
     )
+    parser.add_argument(
+        "--scoring-mode",
+        choices=["response", "tool-calling"],
+        default="response",
+        help="Choose how task success is scored: exact/regex response matching or successful tool calling.",
+    )
     args = parser.parse_args()
 
     # Determine which files to run
@@ -750,6 +778,7 @@ async def main():
                 openai_base_url=args.openai_base_url,
                 openai_model=args.openai_model,
                 require_all_tags=not args.relaxed_response_format,
+                scoring_mode=args.scoring_mode,
             )
 
             # Generate output filename (will overwrite if exists)
