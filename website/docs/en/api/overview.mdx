@@ -1,0 +1,310 @@
+# API Overview
+
+The AIO Sandbox API exposes a unified runtime for agents and developer tooling through a single HTTP surface. Instead of splitting browser, shell, files, notebooks, and MCP tools into separate services, the platform presents them as one versioned API.
+
+The current OpenAPI contract is available at `/v1/openapi.json`, and the interactive reference is exposed in the docs portal at `/en/api`.
+
+## Base Information
+
+- OpenAPI version: `3.1.0`
+- Documented service version: `1.9.4`
+- Default local base URL: `http://127.0.0.1:8080`
+
+Primary runtime entry points:
+
+- REST API: `/v1/*`
+- MCP Streamable HTTP: `/mcp` and `/v1/mcp`
+- Browser CDP endpoint: `/cdp/json/version`
+- Jupyter UI: `/jupyter`
+
+## Authentication
+
+The API supports two main authentication flows:
+
+1. Short-lived ticket flow
+- `POST /tickets` creates a temporary ticket.
+- `GET /auth` validates a request using that ticket.
+
+2. JWT flow
+- `GET /auth` also accepts a JWT in the `Authorization` header.
+
+This design fits edge-proxy and `auth_request` patterns, where a reverse proxy delegates auth decisions to the sandbox runtime.
+
+## API Domains
+
+### Sandbox
+
+Endpoints:
+
+- `GET /v1/sandbox`
+- `GET /v1/sandbox/packages/python`
+- `GET /v1/sandbox/packages/nodejs`
+- `GET /v1/sandbox/hooks`
+- `POST /v1/sandbox/hooks`
+- `DELETE /v1/sandbox/hooks/{name}`
+- `GET /v1/sandbox/observe/status`
+- `GET /v1/sandbox/observe/live`
+- `POST /v1/sandbox/observe/start`
+- `POST /v1/sandbox/observe/stop`
+- `POST /v1/sandbox/observe/export`
+- `GET /v1/sandbox/observe/reports`
+- `GET /v1/sandbox/observe/reports/{report_id}`
+
+Use this domain to inspect the running environment, enumerate installed packages, register lifecycle hooks, and export observation or trace-like reports.
+
+### Shell and Bash
+
+Shell endpoints:
+
+- `POST /v1/shell/exec`
+- `POST /v1/shell/view`
+- `POST /v1/shell/wait`
+- `POST /v1/shell/write`
+- `POST /v1/shell/kill`
+- `POST /v1/shell/sessions/create`
+- `POST /v1/shell/sessions/update`
+- `GET /v1/shell/terminal-url`
+- `GET /v1/shell/sessions/stats`
+- `GET /v1/shell/sessions`
+- `GET /v1/shell/sessions/{session_id}`
+
+Bash endpoints:
+
+- `POST /v1/bash/exec`
+- `POST /v1/bash/output`
+- `POST /v1/bash/write`
+- `POST /v1/bash/kill`
+- `GET /v1/bash/sessions`
+- `POST /v1/bash/sessions/create`
+- `POST /v1/bash/sessions/{session_id}/close`
+
+These APIs support command execution, interactive stdin writes, session reuse, terminal views, and long-running process polling.
+
+### File System
+
+Endpoints:
+
+- `POST /v1/file/read`
+- `POST /v1/file/write`
+- `POST /v1/file/replace`
+- `POST /v1/file/search`
+- `POST /v1/file/find`
+- `POST /v1/file/grep`
+- `POST /v1/file/glob`
+- `POST /v1/file/upload`
+- `POST /v1/file/download`
+- `POST /v1/file/list`
+- `POST /v1/file/str_replace_editor`
+- `POST /v1/file/watch`
+- `GET /v1/file/watch/{watcher_id}/events`
+- `GET /v1/file/watch/{watcher_id}/poll`
+- `POST /v1/file/watch/wait`
+- `DELETE /v1/file/watch/{watcher_id}`
+
+This domain is designed for agent-safe file access, search, replacement, artifact movement, and watch-based automation.
+
+### Jupyter and Node.js
+
+Jupyter endpoints:
+
+- `POST /v1/jupyter/execute`
+- `GET /v1/jupyter/info`
+- `GET /v1/jupyter/sessions`
+- `GET /v1/jupyter/sessions/{session_id}`
+- `POST /v1/jupyter/sessions/create`
+
+Node.js endpoints:
+
+- `POST /v1/nodejs/execute`
+- `GET /v1/nodejs/info`
+- `GET /v1/nodejs/sessions`
+- `GET /v1/nodejs/sessions/{session_id}`
+
+These endpoints provide notebook-backed execution and lightweight REPL-style runtime execution inside the same sandbox.
+
+### MCP
+
+Endpoints:
+
+- `GET /v1/mcp/servers`
+- `GET /v1/mcp/{server_name}/tools`
+- `POST /v1/mcp/{server_name}/tools/{tool_name}`
+
+Runtime entry points:
+
+- `/mcp`
+- `/v1/mcp`
+
+The MCP layer turns the sandbox into a tool-serving hub for agents. It can expose browser, file, shell, and other capabilities through a standardized tool-calling interface.
+
+### Browser Automation
+
+Browser endpoints:
+
+- `GET /v1/browser/info`
+- `GET /v1/browser/screenshot`
+- `POST /v1/browser/actions`
+- `POST /v1/browser/config`
+- `POST /v1/browser/restart`
+- `GET /v1/browser/proxy.pac`
+
+Page endpoints:
+
+- `POST /v1/browser/page/navigate`
+- `POST /v1/browser/page/back`
+- `POST /v1/browser/page/forward`
+- `POST /v1/browser/page/reload`
+- `POST /v1/browser/page/click`
+- `POST /v1/browser/page/fill`
+- `POST /v1/browser/page/type`
+- `POST /v1/browser/page/press_key`
+- `POST /v1/browser/page/hot_key`
+- `POST /v1/browser/page/hover`
+- `POST /v1/browser/page/select_option`
+- `POST /v1/browser/page/check`
+- `POST /v1/browser/page/uncheck`
+- `POST /v1/browser/page/upload_file`
+- `POST /v1/browser/page/fill_form`
+- `POST /v1/browser/page/scroll`
+- `POST /v1/browser/page/scroll_to`
+- `POST /v1/browser/page/scroll_to_element`
+- `GET /v1/browser/page/screenshot`
+- `POST /v1/browser/page/record`
+- `GET /v1/browser/page/html`
+- `GET /v1/browser/page/text`
+- `GET /v1/browser/page/markdown`
+- `GET /v1/browser/page/elements`
+- `GET /v1/browser/page/console`
+- `POST /v1/browser/page/console/export`
+- `POST /v1/browser/page/evaluate`
+- `POST /v1/browser/page/find_text`
+- `POST /v1/browser/page/wait`
+
+Tabs, cookies, state, network, and captcha endpoints:
+
+- `GET /v1/browser/tabs`
+- `DELETE /v1/browser/tabs/{index}`
+- `POST /v1/browser/tabs/{index}/activate`
+- `GET /v1/browser/cookies`
+- `POST /v1/browser/state/save`
+- `POST /v1/browser/state/load`
+- `POST /v1/browser/network/headers`
+- `POST /v1/browser/network/scoped_headers`
+- `POST /v1/browser/network/route`
+- `GET /v1/browser/network/requests`
+- `POST /v1/browser/network/export_har`
+- `GET /v1/browser/captcha/detect`
+- `POST /v1/browser/captcha/wait`
+
+This area is the largest API domain. It supports both high-level interaction and lower-level browser state and network inspection.
+
+### Code Execution
+
+Endpoints:
+
+- `POST /v1/code/execute`
+- `GET /v1/code/info`
+
+This is the generic runtime execution surface for code workloads that do not need Jupyter or Node-specific session management.
+
+### Utilities, Skills, Proxy, and Display
+
+Utility endpoint:
+
+- `POST /v1/util/convert_to_markdown`
+
+Skill endpoints:
+
+- `POST /v1/skills/register`
+- `GET /v1/skills/metadatas`
+- `GET /v1/skills`
+- `DELETE /v1/skills/{name}`
+- `GET /v1/skills/{name}/content`
+
+Proxy endpoints:
+
+- `GET /v1/proxy/mappings`
+- `DELETE /v1/proxy/mappings/{source}`
+- `GET /v1/proxy/excludes`
+- `POST /v1/proxy/diagnose`
+- `GET /v1/proxy/health`
+- `POST /v1/proxy/upstream`
+
+Display endpoint:
+
+- `POST /v1/display/record`
+
+These APIs support helper operations, dynamic skill registration, proxy management, and display recording workflows.
+
+## Response Pattern
+
+Most endpoints return either a generic `Response` wrapper or a more specialized response model. The OpenAPI spec also documents compatibility layers in some domains, especially browser actions, where newer unified response fields coexist with older fields.
+
+For automation clients, this means:
+
+- treat `status` as lifecycle state, not always success or failure;
+- check `exit_code` for command outcomes where relevant;
+- prefer documented response models over assumptions based on one endpoint family.
+
+## Typical Agent Workflows
+
+### Read, edit, and validate code
+
+1. Read files with `/v1/file/read`
+2. Search with `/v1/file/search`, `/v1/file/grep`, or `/v1/file/glob`
+3. Update with `/v1/file/write` or `/v1/file/replace`
+4. Run verification through `/v1/bash/exec` or `/v1/shell/exec`
+
+### Browser-driven task execution
+
+1. Navigate with `/v1/browser/page/navigate`
+2. Interact with `/v1/browser/page/click`, `/v1/browser/page/fill`, or `/v1/browser/page/hot_key`
+3. Inspect content with `/v1/browser/page/text`, `/v1/browser/page/html`, or `/v1/browser/page/markdown`
+4. Export evidence using screenshots, recordings, or HAR
+
+### MCP tool orchestration
+
+1. Enumerate servers with `/v1/mcp/servers`
+2. Enumerate tools with `/v1/mcp/{server_name}/tools`
+3. Execute tools with `/v1/mcp/{server_name}/tools/{tool_name}`
+
+## SDK Mapping
+
+The API is already exposed through generated SDK groups, especially in the Python SDK client:
+
+- `sandbox`
+- `shell`
+- `bash`
+- `file`
+- `jupyter`
+- `nodejs`
+- `mcp`
+- `browser`
+- `browser_page`
+- `browser_tabs`
+- `browser_cookies`
+- `browser_state`
+- `browser_network`
+- `browser_captcha`
+- `code`
+- `util`
+- `skills`
+- `proxy`
+- `display`
+- `auth`
+
+Reference: [sdk/python/agent_sandbox/client.py](sdk/python/agent_sandbox/client.py)
+
+## Recommended Usage Notes
+
+- Use `shell` when you want richer terminal-oriented workflows and terminal URLs.
+- Use `bash` when you want process-oriented execution with explicit polling semantics.
+- Use `browser/page/*` for deterministic automation and `browser/actions` for higher-level abstractions.
+- Use MCP when your orchestration layer already speaks tool-calling natively.
+- Use file watch endpoints for event-driven agent workflows instead of manual polling loops where possible.
+
+## Reference
+
+- Interactive reference: `/en/api`
+- OpenAPI contract: `/v1/openapi.json`
+- Runtime MCP endpoints: `/mcp` and `/v1/mcp`
